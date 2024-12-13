@@ -115,6 +115,10 @@ data:
       reject_old_samples: true
       reject_old_samples_max_age: 24h
       {{- toYaml .Values.loki.retention | nindent 6 }}
+      retention_stream:
+      - selector: '{job="incident-report"}'
+        priority: 1
+        period: 60d
 
     chunk_store_config:
       max_look_back_period: 0s
