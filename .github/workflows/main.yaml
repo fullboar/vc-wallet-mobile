@@ -1,8 +1,11 @@
 name: Native Build & Test
 
 env:
-  appBuildNumber: ${{ github.run_number }}
-  appBuildVersion: "1.0.25"
+  app_build_number: ${{ github.run_number }}
+  app_version: ${{ github.run_number % 2 == 1 && "3.15.0" || "1.0.25" }} # Single App version (3.15.0) for odd builds, BC Wallet version (1.0.25) for even builds
+  appBCWalletBuildVersion: "1.0.25"
+  appSingleAppBuildVersion: "3.15.0"
+  is_single_app_build: ${{ github.run_number % 2 == 1 }} # true for odd build numbers (Single App), false for even (BC Wallet)
 
 on:
   workflow_dispatch:
@@ -29,6 +32,9 @@ jobs:
             "PLAY_STORE_JKS_BASE64"
             "PLAY_STORE_JKS_ALIAS"
             "PLAY_STORE_JKS_PASSWD"
+            "PLAY_STORE_JKS_BASE64_SADEV"
+            "PLAY_STORE_JKS_ALIAS_SADEV"
+            "PLAY_STORE_JKS_PASSWD_SADEV"
           )
           for var in "${required_env_vars[@]}"; do
             if [ -z "${!var}" ]; then
@@ -43,7 +49,9 @@ jobs:
           PLAY_STORE_JKS_BASE64: ${{ secrets.PLAY_STORE_JKS_BASE64 }}
           PLAY_STORE_JKS_ALIAS: ${{ secrets.PLAY_STORE_JKS_ALIAS }}
           PLAY_STORE_JKS_PASSWD: ${{ secrets.PLAY_STORE_JKS_PASSWD }}
-
+          PLAY_STORE_JKS_BASE64_SADEV: ${{ secrets.PLAY_STORE_JKS_BASE64_SADEV }}
+          PLAY_STORE_JKS_ALIAS_SADEV: ${{ secrets.PLAY_STORE_JKS_ALIAS_SADEV }}
+          PLAY_STORE_JKS_PASSWD_SADEV: ${{ secrets.PLAY_STORE_JKS_PASSWD_SADEV }}
   check-vars:
     runs-on: ubuntu-22.04
     steps:
@@ -114,7 +122,8 @@ jobs:
 
   build-ios:
     needs: [check-secrets, check-vars, early-exit-check]
-    if: ${{ needs.early-exit-check.outputs.should_skip_build != 'true' }}
+    # if: ${{ needs.early-exit-check.outputs.should_skip_build != 'true' }}
+    if: false # Skip iOS build for development
     env:
       REACT_NATIVE_NODE_BINARY: $(which node)
       NODE_BINARY: $(which node)
@@ -191,8 +200,8 @@ jobs:
       - name: Bump Build No.
         working-directory: app/ios
         env:
-          CURRENT_PROJECT_VERSION: ${{ env.appBuildNumber }}
-          MARKETING_VERSION: ${{ env.appBuildVersion }}
+          CURRENT_PROJECT_VERSION: ${{ env.app_build_number }}
+          MARKETING_VERSION: ${{ env.appBCWalletBuildVersion }}
         run: |
           agvtool new-version ${CURRENT_PROJECT_VERSION} && \
           agvtool new-marketing-version ${MARKETING_VERSION}
@@ -269,8 +278,8 @@ jobs:
           app_store_connect_issuer_id: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           app_store_connect_key_identifier: ${{ secrets.APP_STORE_CONNECT_KEY_IDENTIFIER_95 }}
           app_store_connect_private_key: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY_95 }}
-          version_code: ${{ env.appBuildNumber }}
-          version_name: ${{ env.appBuildVersion }}
+          version_code: ${{ env.app_build_number }}
+          version_name: ${{ env.appBCWalletBuildVersion }}
 
       - name: Send notification for iOS failure
         if: failure() && github.ref_name == 'main'
@@ -338,12 +347,18 @@ jobs:
           echo "INDY_VDR_PROXY_URL=${INDY_VDR_PROXY_URL}" >>.env
           echo "IAS_URL=${IAS_URL}" >>.env
 
+      - name: Patch for Single App build
+        if: ${{ env.is_single_app_build == 'true' }}
+        run: |
+          echo "Patching for Single App build"
+          git am < 0001-your-commit-subject.patch
+
       - name: Create release keystore
         working-directory: app/android/app
         env:
-          PLAY_STORE_JKS_BASE64: ${{ secrets.PLAY_STORE_JKS_BASE64 }}
-          PLAY_STORE_JKS_ALIAS: ${{ secrets.PLAY_STORE_JKS_ALIAS }}
-          PLAY_STORE_JKS_PASSWD: ${{ secrets.PLAY_STORE_JKS_PASSWD }}
+          PLAY_STORE_JKS_BASE64: ${{ env.is_single_app_build == 'true' && secrets.PLAY_STORE_JKS_BASE64_SADEV || secrets.PLAY_STORE_JKS_BASE64 }}
+          PLAY_STORE_JKS_ALIAS: ${{ env.is_single_app_build == 'true' && secrets.PLAY_STORE_JKS_ALIAS_SADEV || secrets.PLAY_STORE_JKS_ALIAS }}
+          PLAY_STORE_JKS_PASSWD: ${{ env.is_single_app_build == 'true' && secrets.PLAY_STORE_JKS_PASSWD_SADEV || secrets.PLAY_STORE_JKS_PASSWD }}
         run: |
           echo "${PLAY_STORE_JKS_BASE64}" | base64 -d >release.keystore && \
           keytool -list -v -keystore release.keystore -alias ${PLAY_STORE_JKS_ALIAS} -storepass:env PLAY_STORE_JKS_PASSWD | \
@@ -353,18 +368,18 @@ jobs:
       #        if: github.ref_name != 'main' || needs.check-android-secrets.outputs.isReleaseBuild != 'true'
       #        working-directory: app/android
       #        env:
-      #          VERSION_CODE: ${{ env.appBuildNumber }}
-      #          VERSION_NAME: ${{ env.appBuildVersion }}
+      #          VERSION_CODE: ${{ env.app_build_number }}
+      #          VERSION_NAME: ${{ env.appBCWalletBuildVersion }}
       #        run: |
       #          ./gradlew --no-daemon bundleRelease
 
       - name: Android release build
         working-directory: app/android
         env:
-          PLAY_STORE_JKS_ALIAS: ${{ secrets.PLAY_STORE_JKS_ALIAS }}
-          PLAY_STORE_JKS_PASSWD: ${{ secrets.PLAY_STORE_JKS_PASSWD }}
-          VERSION_CODE: ${{ env.appBuildNumber }}
-          VERSION_NAME: ${{ env.appBuildVersion }}
+          PLAY_STORE_JKS_ALIAS: ${{ env.is_single_app_build == 'true' && secrets.PLAY_STORE_JKS_ALIAS_SADEV || secrets.PLAY_STORE_JKS_ALIAS }}
+          PLAY_STORE_JKS_PASSWD: ${{ env.is_single_app_build == 'true' && secrets.PLAY_STORE_JKS_PASSWD_SADEV || secrets.PLAY_STORE_JKS_PASSWD }}
+          VERSION_CODE: ${{ env.app_build_number }}
+          VERSION_NAME: ${{ env.appBCWalletBuildVersion }}
         run: |
           ( cd ../ && npx react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle  --verbose ) && \
           ./gradlew bundleRelease && \
@@ -372,7 +387,7 @@ jobs:
           find . -type f -name '*.apk'
 
       #      - name: Publish to GitHub Packages Registry
-      #        run: mvn deploy:deploy-file -s $GITHUB_WORKSPACE/settings.xml -DgroupId=com.github.bcgov -DartifactId=bc-wallet -Dclassifier=android -DrepositoryId=github -Durl=https://maven.pkg.github.com/$GITHUB_REPOSITORY -Dversion=${{ env.appBuildVersion }}.${{ env.appBuildNumber }} -DgeneratePom=false -Dpackaging=aab -Dfile=app/android/app/build/outputs/bundle/release/app-release.aab
+      #        run: mvn deploy:deploy-file -s $GITHUB_WORKSPACE/settings.xml -DgroupId=com.github.bcgov -DartifactId=bc-wallet -Dclassifier=android -DrepositoryId=github -Durl=https://maven.pkg.github.com/$GITHUB_REPOSITORY -Dversion=${{ env.appBCWalletBuildVersion }}.${{ env.app_build_number }} -DgeneratePom=false -Dpackaging=aab -Dfile=app/android/app/build/outputs/bundle/release/app-release.aab
       #        env:
       #          GITHUB_TOKEN: ${{ github.token }}
 
@@ -398,15 +413,16 @@ jobs:
           retention-days: 7
 
       - name: Ship to Google Play
-        if: github.ref_name == 'main'
+        if: false # Temporarily disabled for development
+        # if: github.ref_name == 'main'
         working-directory: app/android
         env:
           GOOGLE_API_CREDENTIALS_BASE64: ${{ secrets.GOOGLE_API_CREDENTIALS_BASE64 }}
           GOOGLE_API_CREDENTIALS: "api_keys.json"
           ANDROID_BUNDLE_PATH: "./android/app/build/outputs/bundle/release/app-release.aab"
           ANDROID_PACKAGE_NAME: "ca.bc.gov.BCWallet"
-          VERSION_CODE: ${{ env.appBuildNumber }}
-          VERSION_NAME: ${{ env.appBuildVersion }}
+          VERSION_CODE: ${{ env.app_build_number }}
+          VERSION_NAME: ${{ env.appBCWalletBuildVersion }}
         run: |
           # when we updated to yarn we started getting an error with paths
           # and had to add `/android` to the path.
