@@ -10,7 +10,7 @@ import {
   Code,
   CodeScannerFrame,
 } from 'react-native-vision-camera'
-import QRScannerTorch from '@bifold/core/src/components/misc/QRScannerTorch'
+import QRScannerTorch from '@bifold/core'
 
 const overlayTint: ColorValue = 'rgba(0, 0, 0, 0.4)'
 

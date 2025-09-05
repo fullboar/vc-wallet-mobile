@@ -1,6 +1,16 @@
 import { BCSCRootStackParams } from '@/bcsc-theme/types/navigators'
 import { BCDispatchAction, BCState } from '@/store'
-import { ThemedText, useStore, useTheme, Button, ButtonType, useServices, TOKENS, DispatchAction } from '@bifold/core'
+import {
+  ThemedText,
+  useStore,
+  useTheme,
+  Button,
+  ButtonType,
+  useServices,
+  TOKENS,
+  DispatchAction,
+  BifoldError,
+} from '@bifold/core'
 import { useNavigation } from '@react-navigation/native'
 import { StackNavigationProp } from '@react-navigation/stack'
 import React from 'react'
@@ -82,13 +92,13 @@ const RemoveAccountConfirmationScreen: React.FC = () => {
     } catch (error: unknown) {
       if (serverDeleteSucceeded) {
         // Server deletion succeeded but local cleanup failed
-        logger.error('Server deletion succeeded but local cleanup failed:', error)
+        logger.error('Server deletion succeeded but local cleanup failed:', error as Error)
 
         // TODO(TL): The account is in a partially deleted state here.
         // We could recommend the user reinstalls the app or we could implement some recovery mechanism.
       } else {
         // The deletion fails outright, everything is still in tact here
-        logger.error('IAS delete request failed, local account remains intact:', error)
+        logger.error('IAS delete request failed, local account remains intact:', error as Error)
       }
     }
   }

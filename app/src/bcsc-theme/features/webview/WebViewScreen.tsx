@@ -20,7 +20,7 @@ const WebViewScreen: React.FC<WebViewScreenProps> = ({ route }) => {
   const handleError = useCallback(
     (syntheticEvent: WebViewErrorEvent) => {
       const { nativeEvent } = syntheticEvent
-      logger.error('WebView Error:', nativeEvent)
+      logger.error('WebView Error:', { title: nativeEvent.title, description: nativeEvent.description })
     },
     [logger]
   )
